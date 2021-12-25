@@ -58,11 +58,11 @@ static inline int sdsHdrSize(char type) {
 }
 
 static inline char sdsReqType(size_t string_size) {
-    if (string_size < 1<<5)
+    if (string_size < 1<<5) // 2*2*2*2*2 = 32
         return SDS_TYPE_5;
-    if (string_size < 1<<8)
+    if (string_size < 1<<8) // 2*2*2*2*2*2*2*2 = 512
         return SDS_TYPE_8;
-    if (string_size < 1<<16)
+    if (string_size < 1<<16)// ...
         return SDS_TYPE_16;
 #if (LONG_MAX == LLONG_MAX)
     if (string_size < 1ll<<32)
@@ -103,23 +103,34 @@ static inline size_t sdsTypeMaxSize(char type) {
 sds _sdsnewlen(const void *init, size_t initlen, int trymalloc) {
     void *sh;
     sds s;
+    // 获取sds类型，为了节约内存，sds分为sdshdr5，sdshdr8，sdshdr16，sdshdr32，sdshdr564五种类型，其中sdshdr5这个结构体用于字符串少的情况，所以缺少len和alloc；这个类型用的少，
+    // 不考虑；另外，这些类型的区别在于结构体的len（已使用长度）和alloc（总长度）分别使用8,16,32,64个字节表示，比如sdshdr8最多存储2的8次方，就是256个字符长度的字符串；16、32、64依次类推
     char type = sdsReqType(initlen);
-    /* Empty strings are usually created in order to append. Use type 8
-     * since type 5 is not good at this. */
+    // 如果类型是sdshdr5类型，并且字符串的长度是空字符串，则直接将类型升级为sdshdr8，这是因为创造一个空字符串后，通常会进行一系列的append操作，sdshdr5存储的上限是32个字符，不够用
     if (type == SDS_TYPE_5 && initlen == 0) type = SDS_TYPE_8;
+    // 通过sizeof获取type对应的sdshdr大小
     int hdrlen = sdsHdrSize(type);
     unsigned char *fp; /* flags pointer. */
     size_t usable;
 
+    //C语言中为了不同平台间数值类型的可移植性,使用size_t代替int等类型,而这里initlen就是size_t的类型,这里的assert是避免initlen + hdrlen + 1之后溢出变成负数
     assert(initlen + hdrlen + 1 > initlen); /* Catch size_t overflow */
+
     sh = trymalloc?
+        // 新分配内存
         s_trymalloc_usable(hdrlen+initlen+1, &usable) :
+        // 调整内存
         s_malloc_usable(hdrlen+initlen+1, &usable);
+    // 内存不足时，malloc函数会返回NULL，这里直接返回NULL表示内存不足
     if (sh == NULL) return NULL;
+
+    // 如果传的是SDS_NOINIT的话,代表想要一个初始化的字符串,这时候就直接弄个空
     if (init==SDS_NOINIT)
         init = NULL;
     else if (!init)
+        // 如果不是初始化的话,需要用memset初始化一下
         memset(sh, 0, hdrlen+initlen+1);
+    // 把s指向sds的柔性数组,这里从结构体头部位置向后加hdrlen就是柔性数组的位置
     s = (char*)sh+hdrlen;
     fp = ((unsigned char*)s)-1;
     usable = usable-hdrlen-1;

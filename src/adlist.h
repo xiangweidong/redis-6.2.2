@@ -34,8 +34,13 @@
 /* Node, List, and Iterator are the only data structures used currently. */
 
 typedef struct listNode {
+    // 前置节点指针
     struct listNode *prev;
+
+    // 后置节点指针
     struct listNode *next;
+
+    // 值的指针，void表示可以接受任意类型
     void *value;
 } listNode;
 
@@ -45,11 +50,22 @@ typedef struct listIter {
 } listIter;
 
 typedef struct list {
+    // 头节点指针
     listNode *head;
+
+    // 尾节点指针
     listNode *tail;
+
+    // 节点复制函数
     void *(*dup)(void *ptr);
+
+    // 节点值释放函数
     void (*free)(void *ptr);
+
+    // 节点值对比函数
     int (*match)(void *ptr, void *key);
+
+    // 链表所包含的节点数量
     unsigned long len;
 } list;
 
@@ -70,23 +86,42 @@ typedef struct list {
 #define listGetMatchMethod(l) ((l)->match)
 
 /* Prototypes */
+// 创建一个空list
 list *listCreate(void);
+
+// 释放list
 void listRelease(list *list);
+// 将list置为空，但是会保留结构
 void listEmpty(list *list);
+// 从list头部插入值
 list *listAddNodeHead(list *list, void *value);
+// 从list尾部插入值
 list *listAddNodeTail(list *list, void *value);
+// 插入新的节点到指定节点后面或者前面，其中list表示链表；old_node表示目标节点；value表示新的值；after表示是将value插入到old_node的前面还是后面，0表示插入到前面，其他表示后面
 list *listInsertNode(list *list, listNode *old_node, void *value, int after);
+// 删除list中的node节点
 void listDelNode(list *list, listNode *node);
+// 获取list迭代器，direction表示迭代方式，0表示头，1表示尾
 listIter *listGetIterator(list *list, int direction);
+// 获取下一个节点
 listNode *listNext(listIter *iter);
+// 释放迭代器内存
 void listReleaseIterator(listIter *iter);
+// 拷贝一个list副本，内部通过头部迭代器方式实现
 list *listDup(list *orig);
+// 从list中搜索key的值，如果存在match（节点对比）函数，则使用match判断node的value是否相等，否则直接node.value == key判断
 listNode *listSearchKey(list *list, void *key);
+// 返回index位置的节点
 listNode *listIndex(list *list, long index);
+// 创建list的头部迭代器li
 void listRewind(list *list, listIter *li);
+// 创建list的尾部迭代器li
 void listRewindTail(list *list, listIter *li);
+// tail转移到head
 void listRotateTailToHead(list *list);
+// head转移到tail
 void listRotateHeadToTail(list *list);
+// 将o接到l上
 void listJoin(list *l, list *o);
 
 /* Directions for iterators */

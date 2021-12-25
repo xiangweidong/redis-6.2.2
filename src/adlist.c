@@ -54,6 +54,7 @@ list *listCreate(void)
 }
 
 /* Remove all the elements from the list without destroying the list itself. */
+// 将list清空，但是保留基本结构
 void listEmpty(list *list)
 {
     unsigned long len;
@@ -61,12 +62,14 @@ void listEmpty(list *list)
 
     current = list->head;
     len = list->len;
+    // 从头节点开始遍历整个链表，逐一释放节点内存，其中如果list存在free函数，则会释放没个节点的value值
     while(len--) {
         next = current->next;
         if (list->free) list->free(current->value);
         zfree(current);
         current = next;
     }
+    // 复位list，将头节点和尾节点置为NULL，len置为0
     list->head = list->tail = NULL;
     list->len = 0;
 }
@@ -76,7 +79,9 @@ void listEmpty(list *list)
  * This function can't fail. */
 void listRelease(list *list)
 {
+    // 清空list，但保留基本结构
     listEmpty(list);
+    // 释放list
     zfree(list);
 }
 
@@ -88,8 +93,10 @@ void listRelease(list *list)
  * On success the 'list' pointer you pass to the function is returned. */
 list *listAddNodeHead(list *list, void *value)
 {
+    // 声明一个名为node的listNode*
     listNode *node;
 
+    // 为node开辟空间
     if ((node = zmalloc(sizeof(*node))) == NULL)
         return NULL;
     node->value = value;
@@ -139,21 +146,32 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
         return NULL;
     node->value = value;
     if (after) {
+        // 操作完成后的链表 old_node->node->old_node.next
+        // 将新节点插入到old_node节点的后面
         node->prev = old_node;
         node->next = old_node->next;
+        // 如果old_node是尾部节点，则进行新尾部节点替换（替换为node）
         if (list->tail == old_node) {
             list->tail = node;
         }
     } else {
+        // 操作完成后的链表 old_node.prev->node->old_node
+        // 将新节点插入到old_node节点的前面
         node->next = old_node;
         node->prev = old_node->prev;
+        // 如果old_node是头部节点，则进行新头部节点替换（替换为node）
         if (list->head == old_node) {
             list->head = node;
         }
     }
+    // 此时，node节点可能存在两种形态
+    // old_node->node->old_node.next
+    // old_node.prev->node->old_node
+    // 如果node的前面节点存在，则要进行node.prev节点的next指针校准
     if (node->prev != NULL) {
         node->prev->next = node;
     }
+    // 如果node的后面的节点存在，则要进行node.next节点的prev指针校准
     if (node->next != NULL) {
         node->next->prev = node;
     }
@@ -167,10 +185,20 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
  * This function can't fail. */
 void listDelNode(list *list, listNode *node)
 {
+    // 正常的一个以node节点为中心的链表段可能存在以下几种情况
+    // NULL->node->NULL
+    // prev->node->NULL
+    // NULL->node->next
+    // 所以删除操作的大概流程如下
+    // 1、如果存在prev,则需要将prev的next指针指向node的next地址，此时prev节点处理完成，next节点则存在next.prev指针继续指向node节点地址的问题，待调整
+    // 2、如果存在不存在prev，则说明node节点为头节点，需要重新设置list的head指针，使其指向next地址
+    // 3、处理next节点；如果存在next节点，则需要将其prev指针指向prev地址，完成1遗留的问题
+    // 4、如果不存在next节点，则说明node节点为tail节点；此时需要将tail指向node的前一个节点，也就是prev地址
     if (node->prev)
         node->prev->next = node->next;
     else
         list->head = node->next;
+
     if (node->next)
         node->next->prev = node->prev;
     else
