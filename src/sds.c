@@ -117,9 +117,9 @@ sds _sdsnewlen(const void *init, size_t initlen, int trymalloc) {
     assert(initlen + hdrlen + 1 > initlen); /* Catch size_t overflow */
 
     sh = trymalloc?
-        // 新分配内存
+        // 尝试分配内存，如果内存不足，会返回NULL
         s_trymalloc_usable(hdrlen+initlen+1, &usable) :
-        // 调整内存
+        // 新分配内存
         s_malloc_usable(hdrlen+initlen+1, &usable);
     // 内存不足时，malloc函数会返回NULL，这里直接返回NULL表示内存不足
     if (sh == NULL) return NULL;
@@ -128,20 +128,25 @@ sds _sdsnewlen(const void *init, size_t initlen, int trymalloc) {
     if (init==SDS_NOINIT)
         init = NULL;
     else if (!init)
-        // 如果不是初始化的话,需要用memset初始化一下
+        // 不是初始化，将sh内存块的hdrlen+initlen+1位置前所有位置全部设置为0，其实就是初始化
         memset(sh, 0, hdrlen+initlen+1);
     // 把s指向sds的柔性数组,这里从结构体头部位置向后加hdrlen就是柔性数组的位置
     s = (char*)sh+hdrlen;
+    // 设置sdshdr的flags；此时s指向sds柔性数组开始位置，-1之后就是flags的位置指针
     fp = ((unsigned char*)s)-1;
+    // sds内存分配完成后，buf的内存大小等于usable-hdrlen-1，1表示字符串最后的那个\0
     usable = usable-hdrlen-1;
+
     if (usable > sdsTypeMaxSize(type))
         usable = sdsTypeMaxSize(type);
+    // sdshdr的len、alloc、flags属性赋值
     switch(type) {
         case SDS_TYPE_5: {
             *fp = type | (initlen << SDS_TYPE_BITS);
             break;
         }
         case SDS_TYPE_8: {
+            // 通过这个宏可以获得sds的指针
             SDS_HDR_VAR(8,s);
             sh->len = initlen;
             sh->alloc = usable;
@@ -170,9 +175,12 @@ sds _sdsnewlen(const void *init, size_t initlen, int trymalloc) {
             break;
         }
     }
+    // 柔性数组buf赋值
     if (initlen && init)
         memcpy(s, init, initlen);
+    // 将字符串最后一位设置'\0'
     s[initlen] = '\0';
+    // 返回柔性数组的指针
     return s;
 }
 
@@ -204,6 +212,7 @@ sds sdsdup(const sds s) {
 /* Free an sds string. No operation is performed if 's' is NULL. */
 void sdsfree(sds s) {
     if (s == NULL) return;
+    // s[-1]指向flags，表示sds的类型; (char*)s-sdsHdrSize(s[-1])其实就是sds的指针，底层是调用free实现的
     s_free((char*)s-sdsHdrSize(s[-1]));
 }
 
@@ -243,6 +252,7 @@ void sdsclear(sds s) {
  * by sdslen(), but only the free buffer space we have. */
 sds sdsMakeRoomFor(sds s, size_t addlen) {
     void *sh, *newsh;
+    // sds剩余的内存空间
     size_t avail = sdsavail(s);
     size_t len, newlen;
     char type, oldtype = s[-1] & SDS_TYPE_MASK;

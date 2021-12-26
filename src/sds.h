@@ -50,7 +50,7 @@ struct __attribute__ ((__packed__)) sdshdr5 {
 };
 struct __attribute__ ((__packed__)) sdshdr8 {
     uint8_t len; // 已使用长度
-    uint8_t alloc; // 字符串总长度
+    uint8_t alloc; // buf分配的内存总长度，这个值是不包含末尾的'\0'
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
     char buf[];
 };
@@ -79,7 +79,8 @@ struct __attribute__ ((__packed__)) sdshdr64 {
 #define SDS_TYPE_32 3 // 011
 #define SDS_TYPE_64 4 // 100
 #define SDS_TYPE_MASK 7 // 111
-#define SDS_TYPE_BITS 3
+#define SDS_TYPE_BITS 3 // sds类型用3bits表示
+// 这个宏的T参数表示类型，有8/16/32/64，s表示柔性buf的指针，s减去sdshdr的大小就是sds的指针了
 #define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
 #define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))
 #define SDS_TYPE_5_LEN(f) ((f)>>SDS_TYPE_BITS)
@@ -100,7 +101,7 @@ static inline size_t sdslen(const sds s) {
     }
     return 0;
 }
-
+// 返回sds剩余可用的空间
 static inline size_t sdsavail(const sds s) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -214,14 +215,28 @@ static inline void sdssetalloc(sds s, size_t newlen) {
             break;
     }
 }
-
+// 返回新的sds，如果内存不足，会报错
 sds sdsnewlen(const void *init, size_t initlen);
+
+// 返回新的sds，如果内存不足会返回NULL
 sds sdstrynewlen(const void *init, size_t initlen);
+
+// 返回一个init对应的sds，如果内存不足时会报错，内部调用和sdsnewlen是一样的
 sds sdsnew(const char *init);
+
+// 返回一个空的sds，结构体是sdshdr8
 sds sdsempty(void);
+
+// 复制sds，s本来就是执行柔性数组，所以当作字符串使用；initlen通过sdslen获得
 sds sdsdup(const sds s);
+
+// 释放sds的内存，底层通过free释放sds的指针完成的
 void sdsfree(sds s);
+
+// 扩充sds空间，并用0填充未使用的部分。len表示新的长度，如果len小于当前s的长度，则无意义
 sds sdsgrowzero(sds s, size_t len);
+
+
 sds sdscatlen(sds s, const void *t, size_t len);
 sds sdscat(sds s, const char *t);
 sds sdscatsds(sds s, const sds t);
