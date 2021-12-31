@@ -649,9 +649,17 @@ typedef struct RedisModuleDigest {
     memset(mdvar.x,0,sizeof(mdvar.x)); \
 } while(0)
 
+/* The actual Redis Object */
+// 对象类型
+#define OBJ_STRING 0    /* String object. */
+#define OBJ_LIST 1      /* List object. */
+#define OBJ_SET 2       /* Set object. */
+#define OBJ_ZSET 3      /* Sorted set object. */
+#define OBJ_HASH 4      /* Hash object. */
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
+// 对象的编码
 #define OBJ_ENCODING_RAW 0     /* Raw representation */
 #define OBJ_ENCODING_INT 1     /* Encoded as integer */
 #define OBJ_ENCODING_HT 2      /* Encoded as hash table */
@@ -672,12 +680,16 @@ typedef struct RedisModuleDigest {
 #define OBJ_STATIC_REFCOUNT (INT_MAX-1) /* Object allocated in the stack. */
 #define OBJ_FIRST_SPECIAL_REFCOUNT OBJ_STATIC_REFCOUNT
 typedef struct redisObject {
+    // 对象的类型，位域为4，占用4位
     unsigned type:4;
+    // 对象的编码，位域为4，占用4位
     unsigned encoding:4;
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits access time). */
+    // 引用数量
     int refcount;
+    // 指向底层实现数据结构的指针
     void *ptr;
 } robj;
 
@@ -710,7 +722,13 @@ typedef struct clientReplyBlock {
  * by integers from 0 (the default database) up to the max configured
  * database. The database number is the 'id' field in the structure. */
 typedef struct redisDb {
+    // 键空间，数据库所有的键对象和值对象都会存到这个里面
     dict *dict;                 /* The keyspace for this DB */
+    // 保存所有设置了过期时间的键信息；其中key为键对象指针，value是一个long long类型的整数一个毫秒精度的时间戳
+    // 过期键清除策略：
+    // .定时删除：设置键的过期时间同时，创建一个定时器，让定时器在键的过期时间来临时执行删除操作
+    // .惰性删除：放任过期时间不管，每次从键空间获取键是检查是否过期，如果过期就删除
+    // .定期删除：每个一段时间，程序就对数据库进行一次检查，删除过期的键。这个删除有个策略，具体待了解
     dict *expires;              /* Timeout of keys with a timeout set */
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP)*/
     dict *ready_keys;           /* Blocked keys that received a PUSH */
@@ -995,19 +1013,30 @@ struct sharedObjectsStruct {
 };
 
 /* ZSETs use a specialized version of Skiplists */
+// 节点
 typedef struct zskiplistNode {
+    // 有序集合中成员的名字
     sds ele;
+    // 有序集合中程序的分值
     double score;
+    // 节点后退指针
     struct zskiplistNode *backward;
+    // 节点所在的层
     struct zskiplistLevel {
+        // 指向下一个节点的指针
         struct zskiplistNode *forward;
+        // 跨度，也叫距离。如果夸过3个节点，那么span就是4
         unsigned long span;
     } level[];
 } zskiplistNode;
 
+// 跳表
 typedef struct zskiplist {
+    // 跳表的头节点和尾节点
     struct zskiplistNode *header, *tail;
+    // 表的节点数量，不包含表头节点
     unsigned long length;
+    // 记录当前表内层数最大的那个节点层数
     int level;
 } zskiplist;
 
@@ -2153,6 +2182,7 @@ typedef struct {
     int minex, maxex; /* are min or max exclusive? */
 } zlexrangespec;
 
+// 创建一个空的跳表
 zskiplist *zslCreate(void);
 void zslFree(zskiplist *zsl);
 zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele);

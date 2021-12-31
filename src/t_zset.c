@@ -84,12 +84,16 @@ zskiplist *zslCreate(void) {
     zsl = zmalloc(sizeof(*zsl));
     zsl->level = 1;
     zsl->length = 0;
+    // 创建一个头节点
     zsl->header = zslCreateNode(ZSKIPLIST_MAXLEVEL,0,NULL);
+    // 初始化头节点的level属性
     for (j = 0; j < ZSKIPLIST_MAXLEVEL; j++) {
         zsl->header->level[j].forward = NULL;
         zsl->header->level[j].span = 0;
     }
+    // 初始化头节点的后退指针
     zsl->header->backward = NULL;
+    // 初始化尾节点
     zsl->tail = NULL;
     return zsl;
 }
@@ -121,6 +125,7 @@ void zslFree(zskiplist *zsl) {
  * levels are less likely to be returned. */
 int zslRandomLevel(void) {
     int level = 1;
+    // 左边是随机生成一个值,取低16位,相当于从1到65535这种取值,右边是0.25乘以65535,所以就是有四分之一的几率进到循环里面让层高加1
     while ((random()&0xFFFF) < (ZSKIPLIST_P * 0xFFFF))
         level += 1;
     return (level<ZSKIPLIST_MAXLEVEL) ? level : ZSKIPLIST_MAXLEVEL;
@@ -135,16 +140,34 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     int i, level;
 
     serverAssert(!isnan(score));
+    // 获取头节点
     x = zsl->header;
+
+    /* zskiplist的节点ele值不能相同，但是score可以相同；排序按照分值大小排序的，越小越靠前；如果分值相同，则按照元素排名，越小越靠前 */
+
+    // 从表最高层开始遍历，查找新节点左边（靠近头方向）的临近节点，因为这些节点的level[n].span会改变，level[n].forward指针或者backward可能需要改变
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
+        // ...
+        // 5层：4 == 4 ？ 0 ： rank[5]; => rank[4] = 0;
+        // 4层：3 == 4 ？ 0 ： rank[4]; => rank[3] = rank[4] = 0;
+        // 3层：2 == 4 ？ 0 ： rank[3]; => rank[2] = rank[3] = 0;
+        // 2层：1 == 4 ？ 0 ： rank[2]; => rank[1] = rank[2] = 0;
+        // 1层：0 == 4 ？ 0 ： rank[1]; => rank[0] = rank[1] = 0;
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
+
+        // 遍历i层的节点，寻找临近元素
+        // 判断逻辑：
+        // 1、如果当前层的节点没有forward，则说明已经到边界，
+        // 条件：存在下一个节点forward，并且forward的score小于新增score或者score相等但是forward的ele值小于新增ele
+        // 符合上述条件则进入循环体
         while (x->level[i].forward &&
                 (x->level[i].forward->score < score ||
                     (x->level[i].forward->score == score &&
                     sdscmp(x->level[i].forward->ele,ele) < 0)))
         {
             rank[i] += x->level[i].span;
+            // x指向下一个节点指针
             x = x->level[i].forward;
         }
         update[i] = x;
@@ -153,16 +176,24 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
      * scores, reinserting the same element should never happen since the
      * caller of zslInsert() should test in the hash table if the element is
      * already inside or not. */
+    // 随便获取新节点层数
     level = zslRandomLevel();
+
     if (level > zsl->level) {
+        // 处理多出来的层数
         for (i = zsl->level; i < level; i++) {
+            // 因为要比其他所有节点的层都要高,所以当前层从当前位置到头节点之间没有其他节点,此时rank[i]的值为头节点到头节点的距离,所以是0.
+            // 由于update数组代表插入位置的前一个节点,,所以update[i]为头节点且跨度为跳表长度
             rank[i] = 0;
             update[i] = zsl->header;
             update[i]->level[i].span = zsl->length;
         }
+        // 更新跳表高度
         zsl->level = level;
     }
+    // 创建新节点，并将x指向该节点
     x = zslCreateNode(level,score,ele);
+
     for (i = 0; i < level; i++) {
         x->level[i].forward = update[i]->level[i].forward;
         update[i]->level[i].forward = x;

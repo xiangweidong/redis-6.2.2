@@ -33,6 +33,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+
 #ifndef __DICT_H
 #define __DICT_H
 
@@ -47,41 +48,68 @@
 /* Unused arguments generate annoying warnings... */
 #define DICT_NOTUSED(V) ((void) V)
 
+// 节点
 typedef struct dictEntry {
+    // 键
     void *key;
+    // 值
     union {
         void *val;
         uint64_t u64;
         int64_t s64;
         double d;
     } v;
+    // 指向下一个节点的指针，解决hash冲突
     struct dictEntry *next;
 } dictEntry;
 
+// 字典类型
 typedef struct dictType {
+    // 计算hash值的函数
     uint64_t (*hashFunction)(const void *key);
+    // 复制键的函数
     void *(*keyDup)(void *privdata, const void *key);
+    // 复制值的函数
     void *(*valDup)(void *privdata, const void *obj);
+    // 对比键的函数
     int (*keyCompare)(void *privdata, const void *key1, const void *key2);
+    // 销毁键的函数
     void (*keyDestructor)(void *privdata, void *key);
+    // 销毁值的函数
     void (*valDestructor)(void *privdata, void *obj);
     int (*expandAllowed)(size_t moreMem, double usedRatio);
 } dictType;
 
 /* This is our hash table structure. Every dictionary has two of this as we
  * implement incremental rehashing, for the old to the new table. */
+// hash表
 typedef struct dictht {
+    // 节点数组
     dictEntry **table;
+    // hash表的大小，2的倍数
     unsigned long size;
+    // hash掩码，用来计算索引值，总是等于size-1
     unsigned long sizemask;
+    // 节点数量
     unsigned long used;
 } dictht;
 
+// 字典
 typedef struct dict {
+    // 字典类型
     dictType *type;
+    // 私有数据
     void *privdata;
+    // 2个hash表，平常只用0，扩容时使用1；扩容方法是渐进式
     dictht ht[2];
+    // 当前rehash的索引值，改值在没有扩容时总是等于-1
+    // 渐进式扩容流程：
+    // 1、为ht[1]分配空间，让字典同时持有ht[0]和ht[1]两张表
+    // 2、将rehashidx设置为0，表示扩容开始
+    // 3、在rehashidx不等于-1期间，每次执行的增删改查操作时，除了执行指定的操作以外，还会顺带将ht[0]哈希表的rehashidx所有的键值对rehash到ht[1]，当rehash工作完成后会将rehashidx的属性值+1
+    // 4、随着操作的不断执行，最终会将ht[0]的所有键值对都rehash到ht[1],这是将rehashidx改为-1表示rehash已完成，同时将ht[1]改为ht[0],ht[0]更改为ht[1]
     long rehashidx; /* rehashing not in progress if rehashidx == -1 */
+    // 暂停rehash标记，大于0表示暂停，小于0表示编码错误
     int16_t pauserehash; /* If >0 rehashing is paused (<0 indicates coding error) */
 } dict;
 

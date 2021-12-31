@@ -81,7 +81,13 @@ struct __attribute__ ((__packed__)) sdshdr64 {
 #define SDS_TYPE_MASK 7 // 111
 #define SDS_TYPE_BITS 3 // sds类型用3bits表示
 // 这个宏的T参数表示类型，有8/16/32/64，s表示柔性buf的指针，s减去sdshdr的大小就是sds的指针了
+// e.g.
+// struct sdshdr8 *sh = (void*) (s-sizeof(struct sdshdr8));
 #define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
+
+// SDS_HDR指针
+// e.g.
+// (struct sdshdr8 *)(s-sizeof(struct sdshdr8));
 #define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))
 #define SDS_TYPE_5_LEN(f) ((f)>>SDS_TYPE_BITS)
 
@@ -128,6 +134,7 @@ static inline size_t sdsavail(const sds s) {
     return 0;
 }
 
+// 设置sds的len属性
 static inline void sdssetlen(sds s, size_t newlen) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -227,7 +234,7 @@ sds sdsnew(const char *init);
 // 返回一个空的sds，结构体是sdshdr8
 sds sdsempty(void);
 
-// 复制sds，s本来就是执行柔性数组，所以当作字符串使用；initlen通过sdslen获得
+// 复制sds，s本来就是执行柔性数组，可以当作字符串使用；initlen通过sdslen获得
 sds sdsdup(const sds s);
 
 // 释放sds的内存，底层通过free释放sds的指针完成的
@@ -236,11 +243,20 @@ void sdsfree(sds s);
 // 扩充sds空间，并用0填充未使用的部分。len表示新的长度，如果len小于当前s的长度，则无意义
 sds sdsgrowzero(sds s, size_t len);
 
-
+// 将t的len个字符连接到s后面
 sds sdscatlen(sds s, const void *t, size_t len);
+
+// 将t链接到s后面
 sds sdscat(sds s, const char *t);
+
+// 将sds类型的t链接到s后面
 sds sdscatsds(sds s, const sds t);
+
+// 从t复制len个字符到s；该操作会覆盖s前面的len个字符：len大于s.len就是全覆盖，小于则是s 0->len的位置会被覆盖
+// 如果s的内存大小不够，还会重新分配内存
 sds sdscpylen(sds s, const char *t, size_t len);
+
+// 将t复制到s，内部使用sdscpylen实现
 sds sdscpy(sds s, const char *t);
 
 sds sdscatvprintf(sds s, const char *fmt, va_list ap);
@@ -250,8 +266,8 @@ sds sdscatprintf(sds s, const char *fmt, ...)
 #else
 sds sdscatprintf(sds s, const char *fmt, ...);
 #endif
-
 sds sdscatfmt(sds s, char const *fmt, ...);
+// 剔除s左右两边指定（cset）的字符
 sds sdstrim(sds s, const char *cset);
 void sdsrange(sds s, ssize_t start, ssize_t end);
 void sdsupdatelen(sds s);
@@ -277,6 +293,8 @@ typedef sds (*sdstemplate_callback_t)(const sds variable, void *arg);
 sds sdstemplate(const char *template, sdstemplate_callback_t cb_func, void *cb_arg);
 
 /* Low level functions exposed to the user API */
+// 字符串需要连接时，需要考虑内存不足的情况，此时要重新分配内存
+// 这个函数是为sds重新分配内存用的
 sds sdsMakeRoomFor(sds s, size_t addlen);
 void sdsIncrLen(sds s, ssize_t incr);
 sds sdsRemoveFreeSpace(sds s);

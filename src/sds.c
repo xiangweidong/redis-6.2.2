@@ -250,51 +250,80 @@ void sdsclear(sds s) {
  *
  * Note: this does not change the *length* of the sds string as returned
  * by sdslen(), but only the free buffer space we have. */
+// 字符串需要连接时，需要考虑内存不足的情况，此时要重新分配内存
+// 这个函数是准们为sds重新分配内存用的
 sds sdsMakeRoomFor(sds s, size_t addlen) {
     void *sh, *newsh;
-    // sds剩余的内存空间
+    // 获取sds剩余的内存空间，就是alloc-len
     size_t avail = sdsavail(s);
     size_t len, newlen;
+    // sds新类型和老类型都定义为当前s的类型
     char type, oldtype = s[-1] & SDS_TYPE_MASK;
     int hdrlen;
     size_t usable;
 
     /* Return ASAP if there is enough space left. */
+    // 如果s剩余的内存够用，则直接返回
     if (avail >= addlen) return s;
 
+    /* 剩余内存不够用时，需要扩充。这里的扩充操作并不是只扩充指定的长度，为了减少内存分配次数，会进行空间预分配 */
+
+    // 获取s当前长度
     len = sdslen(s);
+    // 获取s对应的sds指针
     sh = (char*)s-sdsHdrSize(oldtype);
+    // 新的长度=当前长度+扩充的长度
     newlen = (len+addlen);
+
+    // 又是防止newlen内存溢出变成负数，和sdsnewlen那个assert一样
     assert(newlen > len);   /* Catch size_t overflow */
     if (newlen < SDS_MAX_PREALLOC)
+        // 如果新的字符串长度小于1M，则分配的大小为newlen的两倍
         newlen *= 2;
     else
+        // 如果大于或者等于1M则预分配1M
         newlen += SDS_MAX_PREALLOC;
 
+    // 获取新的sds类型
     type = sdsReqType(newlen);
 
     /* Don't use type 5: the user is appending to the string and type 5 is
      * not able to remember empty space, so sdsMakeRoomFor() must be called
      * at every appending operation. */
+    // 如果发现sds新类型是sdshdr5，则修改为sdshdr8。看来官方是要废弃sdshdr5了...
     if (type == SDS_TYPE_5) type = SDS_TYPE_8;
 
+    // 获取新类型的结构体长度
     hdrlen = sdsHdrSize(type);
+
+    // 又是防止hdrlen + newlen + 1内存溢出变成负数
     assert(hdrlen + newlen + 1 > len);  /* Catch size_t overflow */
     if (oldtype==type) {
+        // 如果结构体类型没变，则重新分配内存
         newsh = s_realloc_usable(sh, hdrlen+newlen+1, &usable);
+        // 如果内存不够，返回NULL
         if (newsh == NULL) return NULL;
+        // 获取新的buf指针
         s = (char*)newsh+hdrlen;
     } else {
         /* Since the header size changes, need to move the string forward,
          * and can't use realloc */
+        // 结构体发生变化，需要重新分配内存，就像strnewlen操作一样
         newsh = s_malloc_usable(hdrlen+newlen+1, &usable);
+        // 如果内存不够，直接返回NULL
         if (newsh == NULL) return NULL;
+        // 将s拷贝到新的内存区域
         memcpy((char*)newsh+hdrlen, s, len+1);
+        // 释放原来的内存空间
         s_free(sh);
+        // 获取新的buf指针
         s = (char*)newsh+hdrlen;
+        // 设置新结构体的flags属性
         s[-1] = type;
+        // 设置新结构体的len属性
         sdssetlen(s, len);
     }
+    // 设置结构体alloc属性
     usable = usable-hdrlen-1;
     if (usable > sdsTypeMaxSize(type))
         usable = sdsTypeMaxSize(type);
@@ -432,15 +461,22 @@ void sdsIncrLen(sds s, ssize_t incr) {
  *
  * if the specified length is smaller than the current length, no operation
  * is performed. */
+// 重新设置s的len，并且将buf中剩余的内存用0填充
 sds sdsgrowzero(sds s, size_t len) {
+    // 获取sds当前长度
     size_t curlen = sdslen(s);
 
+    // 如果新长度<=当前长度，不做任何操作
     if (len <= curlen) return s;
+
+    // 为s重新分配内存
     s = sdsMakeRoomFor(s,len-curlen);
     if (s == NULL) return NULL;
 
     /* Make sure added region doesn't contain garbage */
+    // 初始化新空间，同时也包含字符串尾的'\0'
     memset(s+curlen,0,(len-curlen+1)); /* also set trailing \0 byte */
+    // 设置sds的len属性
     sdssetlen(s, len);
     return s;
 }
@@ -450,13 +486,18 @@ sds sdsgrowzero(sds s, size_t len) {
  *
  * After the call, the passed sds string is no longer valid and all the
  * references must be substituted with the new pointer returned by the call. */
+// 将t的len个字符连接到s后面
 sds sdscatlen(sds s, const void *t, size_t len) {
+    // 获取当前s的长度len
     size_t curlen = sdslen(s);
-
+    // 重新分配内存
     s = sdsMakeRoomFor(s,len);
     if (s == NULL) return NULL;
+    // 将t复制到len个字符到s后面
     memcpy(s+curlen, t, len);
+    // 设置s的len属性
     sdssetlen(s, curlen+len);
+    // 设置s尾字符'\0'
     s[curlen+len] = '\0';
     return s;
 }
@@ -479,13 +520,19 @@ sds sdscatsds(sds s, const sds t) {
 
 /* Destructively modify the sds string 's' to hold the specified binary
  * safe string pointed by 't' of length 'len' bytes. */
+// 从t复制len个字符到s，存放的内存是从s的0开始，意思就是会覆盖s前面的len个字符
+// 如果s的内存大小不够，需要重新分配内存
 sds sdscpylen(sds s, const char *t, size_t len) {
+    // 如果sds类型的alloc小于len，重新分配s的内存空间
     if (sdsalloc(s) < len) {
         s = sdsMakeRoomFor(s,len-sdslen(s));
         if (s == NULL) return NULL;
     }
+    // 从t复制n个字符到s，存放的内存是从s的0开始，意思就是会覆盖s前面的len个字符
     memcpy(s, t, len);
+    // buf后面补'\0'
     s[len] = '\0';
+    // 设置len属性
     sdssetlen(s, len);
     return s;
 }
@@ -765,17 +812,33 @@ sds sdscatfmt(sds s, char const *fmt, ...) {
  *
  * Output will be just "HelloWorld".
  */
+// 剔除s左右两边指定（cset）的字符
+// 该操作通过惰性空间释放策略增加了执行效率；就是只改变了buf的内容和len属性，并未进行内存释放
 sds sdstrim(sds s, const char *cset) {
     char *start, *end, *sp, *ep;
     size_t len;
 
+    // sp和start此时都是指向s的0位置的指针
     sp = start = s;
+
+    // ep和end此时都是指向s的buf末尾位置，并且剔除了buf末尾的'\0'字符
     ep = end = s+sdslen(s)-1;
+
+    // 正向遍历，从前往后寻找第一个不符合条件的指针，就是不在cset字符集合中的指针
     while(sp <= end && strchr(cset, *sp)) sp++;
+    // 反向遍历，从后往前寻找第一个不符合条件的指针
     while(ep > sp && strchr(cset, *ep)) ep--;
+
+    /* 此时sp到ep之间的字符是要保存的 */
+
+    // 获取保留的字符的长度，如果sp比ep还要大，则说明遍历后没发现符合条件的字符
     len = (sp > ep) ? 0 : ((ep-sp)+1);
+    // 执行字符串覆盖操作，将sp的len长度的字符串其实就是sp-ep之间的字符串（包含两个边界sp和ep）复制到s
+    // memmove这个函数和memcopy是一样的
     if (s != sp) memmove(s, sp, len);
+    // 设置buf的末尾
     s[len] = '\0';
+    //设置len属性
     sdssetlen(s,len);
     return s;
 }
