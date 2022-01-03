@@ -161,6 +161,7 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
         errno = ERANGE;
         return AE_ERR;
     }
+    // 从eventLoop中获取事件指针
     aeFileEvent *fe = &eventLoop->events[fd];
 
     if (aeApiAddEvent(eventLoop, fd, mask) == -1)
@@ -202,14 +203,16 @@ int aeGetFileEvents(aeEventLoop *eventLoop, int fd) {
 
     return fe->mask;
 }
-
+// 采用头插法新增在eventLoop中新增一个时间事件
 long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
         aeTimeProc *proc, void *clientData,
         aeEventFinalizerProc *finalizerProc)
 {
+    // 生成时间事件id
     long long id = eventLoop->timeEventNextId++;
     aeTimeEvent *te;
 
+    // 分配te内存
     te = zmalloc(sizeof(*te));
     if (te == NULL) return AE_ERR;
     te->id = id;
@@ -217,15 +220,19 @@ long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
     te->timeProc = proc;
     te->finalizerProc = finalizerProc;
     te->clientData = clientData;
+
+    // prev <- this <- next
     te->prev = NULL;
     te->next = eventLoop->timeEventHead;
+    // NULL <- this <- head
     te->refcount = 0;
+    // 此时te->next等于之前的timeEventHead，如果存在需要将它的prev指针设置为当前（te）事件
     if (te->next)
         te->next->prev = te;
     eventLoop->timeEventHead = te;
     return id;
 }
-
+// 逻辑删除时间事件，将id改为-1
 int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id)
 {
     aeTimeEvent *te = eventLoop->timeEventHead;

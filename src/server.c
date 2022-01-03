@@ -2627,8 +2627,10 @@ void initServerConfig(void) {
     int j;
 
     updateCachedTime(1);
+    // 设置runid
     getRandomHexChars(server.runid,CONFIG_RUN_ID_SIZE);
     server.runid[CONFIG_RUN_ID_SIZE] = '\0';
+
     changeReplicationId();
     clearReplicationId2();
     server.hz = CONFIG_DEFAULT_HZ; /* Initialize it ASAP, even if it may get
@@ -3181,6 +3183,7 @@ void initServer(void) {
     adjustOpenFilesLimit();
     const char *clk_msg = monotonicInit();
     serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
+    // 初始化事件循环器
     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     if (server.el == NULL) {
         serverLog(LL_WARNING,
@@ -6182,14 +6185,22 @@ int main(int argc, char **argv) {
 
     /* We need to initialize our libraries, and the server configuration. */
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
+    // 如果设置了初始化进程名替换的宏，则进行进程名初始化
     spt_init(argc, argv);
 #endif
+    // 地域设置LC_COLLATE，影响字符比较（字符排序），主要就是<string.h> strcoll()、strxfrm()函数
     setlocale(LC_COLLATE,"");
+
     tzset(); /* Populates 'timezone' global. */
+    // 设置OOM处理程序
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
+    // 初始化随机数发生器，这里为了兼容性所以同时用了srand和srandom
     srand(time(NULL)^getpid());
     srandom(time(NULL)^getpid());
+
+    // 设置当前时间
     gettimeofday(&tv,NULL);
+
     init_genrand64(((long long) tv.tv_sec * 1000000 + tv.tv_usec) ^ getpid());
     crc64_init();
 
@@ -6199,11 +6210,19 @@ int main(int argc, char **argv) {
      */
     umask(server.umask = umask(0777));
 
+    // 设置dict hash函数的种子
     uint8_t hashseed[16];
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
+
+    // 设置服务当前是否是哨兵模式
+    // 具体判断条件为第一个参数是否为redis-sentinel或者是否带有--sentinel
     server.sentinel_mode = checkForSentinelMode(argc,argv);
+
+    // 初始化服务配置
     initServerConfig();
+    // 初始化acl
+    // ACL（Access Control List) 是6.0版本的新特性，支持限制用户执行的命令
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
                   basic networking code and client creation depends on it. */
     moduleInitModulesSystem();
@@ -6220,6 +6239,7 @@ int main(int argc, char **argv) {
      * in sentinel mode will have the effect of populating the sentinel
      * data structures with master nodes to monitor. */
     if (server.sentinel_mode) {
+        // 如果是哨兵模式启动，需要初始化哨兵配置
         initSentinelConfig();
         initSentinel();
     }
@@ -6290,7 +6310,10 @@ int main(int argc, char **argv) {
     }
     if (server.sentinel_mode) sentinelCheckConfigFile();
     server.supervised = redisIsSupervised(server.supervised_mode);
+
+    // 确定是否是后台启动模式
     int background = server.daemonize && !server.supervised;
+    // 如果是后台启动模式，则创建守护进程
     if (background) daemonize();
 
     serverLog(LL_WARNING, "oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo");
@@ -6309,6 +6332,8 @@ int main(int argc, char **argv) {
     }
 
     readOOMScoreAdj();
+
+    // 初始化服务
     initServer();
     if (background || server.pidfile) createPidFile();
     if (server.set_proc_title) redisSetProcTitle(NULL);

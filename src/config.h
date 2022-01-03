@@ -132,6 +132,8 @@
 
 #if (defined __linux || defined __APPLE__)
 #define USE_SETPROCTITLE
+
+// 是否初始化进程名替换
 #define INIT_SETPROCTITLE_REPLACEMENT
 void spt_init(int argc, char *argv[]);
 void setproctitle(const char *fmt, ...);

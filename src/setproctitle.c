@@ -193,17 +193,12 @@ void spt_init(int argc, char *argv[]) {
 	char *base, *end, *nul, *tmp;
 	int i, error, envc;
 
-	// argv[0]表示第一个参数的指针位置，一般是redis-server可执行文件的本地路径，如果不存在，则终止初始化
 	if (!(base = argv[0]))
 		return;
 
 	/* We start with end pointing at the end of argv[0] */
-	// 获取第二个参数，这个地方有点迷。。。
-	// 理解：argv是个字符串数组，base此时是第一个字符串的指针，base此时会指向字符串的第一个字符的位置，加上strlen(base)后，其实就是指向了下一个字符串开始的位置了
-	// 因为字符串末尾都会被默认添加一个'\0'字符，所以nul此时是指向第一个字符串末尾的'\0'指针
 	nul = &base[strlen(base)];
 
-	// 这个地方应该是第二个参数的指针了
 	end = nul + 1;
 
 	/* Attempt to extend end as far as we can, while making sure

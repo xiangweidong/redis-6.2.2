@@ -229,9 +229,11 @@
 /* Utility macros.*/
 
 /* Return total bytes a ziplist is composed of. */
+// ziplist的总字节数
 #define ZIPLIST_BYTES(zl)       (*((uint32_t*)(zl)))
 
 /* Return the offset of the last item inside the ziplist. */
+// ziplist最后一项的偏移量
 #define ZIPLIST_TAIL_OFFSET(zl) (*((uint32_t*)((zl)+sizeof(uint32_t))))
 
 /* Return the length of a ziplist, or UINT16_MAX if the length cannot be
@@ -241,9 +243,11 @@
 /* The size of a ziplist header: two 32 bit integers for the total
  * bytes count and last item offset. One 16 bit integer for the number
  * of items field. */
+// ziplist的头大小：32bit(总字节长度) + 32bit(最后一位偏移量) + 16bit(项目的个数)
 #define ZIPLIST_HEADER_SIZE     (sizeof(uint32_t)*2+sizeof(uint16_t))
 
 /* Size of the "end of ziplist" entry. Just one byte. */
+// ziplist尾大小：8bit
 #define ZIPLIST_END_SIZE        (sizeof(uint8_t))
 
 /* Return the pointer to the first entry of a ziplist. */
@@ -699,11 +703,37 @@ static inline void zipAssertValidEntry(unsigned char* zl, size_t zlbytes, unsign
 
 /* Create a new empty ziplist. */
 unsigned char *ziplistNew(void) {
+    // ziplist头和尾的字节数共11个字节，
+    // 其中头部10个字节：32bit(总字节长度) + 32bit(最后一位偏移量) + 16bit(项目的个数)
+    // 尾部1个字节
     unsigned int bytes = ZIPLIST_HEADER_SIZE+ZIPLIST_END_SIZE;
+
+    // 分配新的压缩列表内存空间
     unsigned char *zl = zmalloc(bytes);
+
+    // 宏表达式：(*((uint32_t*)(zl))) = (11)
+    // => *(uint32_t*)(zl) = 11;
+    // => *(zl) = 11;
+    // => *zl = 11;
+    // 可以看出，这是在设置ziplist的字节总长度
     ZIPLIST_BYTES(zl) = intrev32ifbe(bytes);
+
+    // 宏表达式：(*((uint32_t*)((zl)+sizeof(uint32_t)))) = (sizeof(uint32_t)*2+sizeof(uint16_t))
+    // => *((uint32_t*)((zl)+sizeof(uint32_t))) = sizeof(uint32_t)*2+sizeof(uint16_t);
+    // => *((uint32_t*)(zl)+4) = 4*2+2
+    // => *(zl+4) = 10;
+    // zl是char类型的指针，+4操作此时指向ziplist第二个参数（最后一位偏移量），所以这是在设置ziplist的最后一位偏移量
     ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(ZIPLIST_HEADER_SIZE);
+
+    // 宏表达式：(*((uint16_t*)((zl)+sizeof(uint32_t)*2))) = 0
+    // => *((uint16_t*)((zl)+sizeof(uint32_t)*2)) = 0
+    // => *((uint16_t*)((zl)+4*2)) = 0
+    // => *((uint16_t*)((zl)+8)) = 0
+    // => *(zl)+8 = 0
+    // zl是char类型的指针，+8操作此时指向ziplist第三个参数（项目的个数），所以这是在设置ziplist项目的个数
     ZIPLIST_LENGTH(zl) = 0;
+
+    // 将zplist的尾部设置为255
     zl[bytes-1] = ZIP_END;
     return zl;
 }

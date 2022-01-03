@@ -43,6 +43,7 @@ typedef struct {
     long long lval;
 } ziplistEntry;
 
+// 创建一个新的ziplist
 unsigned char *ziplistNew(void);
 unsigned char *ziplistMerge(unsigned char **first, unsigned char **second);
 unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int slen, int where);

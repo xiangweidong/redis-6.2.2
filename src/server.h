@@ -1671,7 +1671,9 @@ typedef struct {
 typedef void redisCommandProc(client *c);
 typedef int redisGetKeysProc(struct redisCommand *cmd, robj **argv, int argc, getKeysResult *result);
 struct redisCommand {
+    // 命令名
     char *name;
+    // 命令处理程序
     redisCommandProc *proc;
     int arity;
     char *sflags;   /* Flags as string representation, one char per flag. */
